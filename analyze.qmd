@@ -1,4 +1,12 @@
-```{r}
+Analyzing Enrollment of Core Classes for CS/MATH/STA/ECON Majors.
+
+```{r setup, include=FALSE}
+options(warn = -1)
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(readr))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(stringr))
 ```
 
 ```{r}
@@ -7,6 +15,7 @@ library(dplyr)
 library(readr)
 library(tidyr)
 library(ggplot2)
+library(stringr)
 ```
 
 ```{r}
@@ -33,15 +42,32 @@ yearly_sum <- data %>%
   group_by(AcademicYear) %>%
   summarise(across(-Semester, sum, na.rm = TRUE))
 
-# Print the yearly sum of enrollments for each course
-print(yearly_sum)
+# Now, pivot the data to long format to identify active years easily
+data_long <- yearly_sum %>%
+  pivot_longer(-AcademicYear, names_to = "Course", values_to = "Enrollment")
+
+# Identify years with any active enrollments (sum of enrollments across courses > 0)
+active_years <- data_long %>%
+  group_by(AcademicYear) %>%
+  summarise(TotalEnrollment = sum(Enrollment, na.rm = TRUE)) %>%
+  filter(TotalEnrollment > 0) %>%
+  select(AcademicYear)
+
+# Filter the original yearly_sum to include only active years
+yearly_sum_active <- yearly_sum %>%
+  filter(AcademicYear %in% active_years$AcademicYear)
+
+# Print the yearly sum of enrollments for each course in active years
+print(yearly_sum_active)
 
 ```
 
 ```{r}
+
 # Pivot the data to a long format for easier calculations
-data_long <- data %>%
-  pivot_longer(-c(Semester, AcademicYear), names_to = "Course", values_to = "Enrollment")
+data_long <- yearly_sum %>%
+  pivot_longer(-AcademicYear, names_to = "Course", values_to = "Enrollment") %>%
+  filter(Enrollment > 0) # Ensure we only consider courses with enrollments
 
 # Fill in missing enrollments with 0 for courses not offered in some years
 data_long <- data_long %>%
@@ -70,24 +96,77 @@ course_prefixes <- unique(gsub("([A-Z]+).*", "\\1", data_long$Course))
 # Print course prefixes for verification
 print(course_prefixes)
 
-# Loop through each course prefix and create a plot
+# Function to plot data for each subject area
+plot_subject_area <- function(data, metric, course_prefixes) {
+  for(prefix in course_prefixes) {
+    current_data <- data %>% 
+      filter(str_detect(Course, pattern = paste0("^", prefix))) %>%
+      arrange(Course, AcademicYear)
+    
+    p <- ggplot(current_data, aes(x = AcademicYear, y = !!sym(metric), color = Course, group = Course)) +
+      geom_line() +
+      geom_point() +
+      theme_minimal() +
+      labs(title = paste(metric, "in Enrollment for", prefix, "Courses"),
+           x = "Academic Year", y = metric, color = "Course") +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    print(p)
+  }
+}
+
+# Identify unique course prefixes
+course_prefixes <- unique(str_extract(data_long$Course, "^[A-Z]+"))
+
+# Plot total enrollments for each subject area
+plot_subject_area(data_long, "Enrollment", course_prefixes)
+
+# Plot percentage change for each subject area
+plot_subject_area(data_long, "Percent_Change", course_prefixes)
+
+
+```
+
+```{r}
+
+# Loop through each course prefix to fit linear models
+model_results <- list()
 for(prefix in course_prefixes) {
   # Filter data for the current prefix
-  current_data <- data_long %>% 
+  department_subset <- data_long %>%
     filter(grepl(paste0("^", prefix), Course)) %>%
-    arrange(Course, AcademicYear)
-  
-  # Generate the plot for the current subject area
-  p <- ggplot(current_data, aes(x = AcademicYear, y = Percent_Change, color = Course, group = Course)) +
-    geom_line() +
-    geom_point() +
+    group_by(AcademicYear) %>%
+    summarize(TotalEnrollment = sum(Enrollment, na.rm = TRUE), .groups = 'drop') %>%
+    mutate(AcademicYearNumeric = as.numeric(factor(AcademicYear)))
+
+  # Fit the linear model
+  model <- lm(TotalEnrollment ~ AcademicYearNumeric, data = department_subset)
+  model_results[[prefix]] <- list("model" = model, "data" = department_subset)
+}
+
+# Optionally, print summary of models for each prefix
+# lapply(model_results, function(x) summary(x$model))
+
+```
+
+```{r}
+
+for(prefix in course_prefixes) {
+  department_subset <- model_results[[prefix]]$data
+  p <- ggplot(department_subset, aes(x = AcademicYearNumeric, y = TotalEnrollment)) +
+    geom_line(aes(color = prefix), size = 1) +  # Line for each prefix
+    geom_point(aes(color = prefix), size = 3) +  # Dots for each data point
+    geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black", size = 1) +  # Black, dashed trendline
+    scale_x_continuous(breaks = department_subset$AcademicYearNumeric, labels = department_subset$AcademicYear) +  # Adjust x-axis labels for readability
+    labs(title = paste("Total Enrollment Trend for", prefix),
+         x = "Academic Year", y = "Total Enrollment",
+         color = "Course", linetype = "Trendline") +  # Adjust legend title for linetype
     theme_minimal() +
-    labs(title = paste("Percentage Change in Enrollment for", prefix, "Courses"),
-         x = "Academic Year", y = "Percentage Change", color = "Course") +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  
-  # Print the plot
+
   print(p)
 }
+
+
 
 ```
