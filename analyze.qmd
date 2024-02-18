@@ -1,0 +1,93 @@
+```{r}
+```
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r}
+# Load the data
+data <- read_csv("data/data.csv")
+
+colnames(data)[1] <- "Semester"
+
+# Function to identify academic years based on semesters
+identify_academic_year <- function(semester) {
+  year <- substr(semester, 2, 4)
+  if(substr(semester, 1, 1) == "F") {
+    return(paste0("AY", year, "-", as.numeric(year) + 1))
+  } else {
+    return(paste0("AY", as.numeric(year) - 1, "-", year))
+  }
+}
+
+# Add academic year column
+data$AcademicYear <- sapply(data$Semester, identify_academic_year)
+
+# Group data by academic year, then sum each course's enrollment numbers
+yearly_sum <- data %>%
+  group_by(AcademicYear) %>%
+  summarise(across(-Semester, sum, na.rm = TRUE))
+
+# Print the yearly sum of enrollments for each course
+print(yearly_sum)
+
+```
+
+```{r}
+# Pivot the data to a long format for easier calculations
+data_long <- data %>%
+  pivot_longer(-c(Semester, AcademicYear), names_to = "Course", values_to = "Enrollment")
+
+# Fill in missing enrollments with 0 for courses not offered in some years
+data_long <- data_long %>%
+  group_by(Course, AcademicYear) %>%
+  summarize(Enrollment = sum(Enrollment, na.rm = TRUE), .groups = 'drop')
+
+# Calculate the percentage change
+data_long <- data_long %>%
+  arrange(Course, AcademicYear) %>%
+  group_by(Course) %>%
+  mutate(Percent_Change = if_else(Enrollment == 0, 0, (Enrollment - lag(Enrollment, default = first(Enrollment))) / lag(Enrollment, default = first(Enrollment)) * 100)) %>%
+  ungroup()
+
+# Replace NA in Percent_Change with 0 for the first year a course is introduced
+data_long$Percent_Change[is.na(data_long$Percent_Change)] <- 0
+
+# View the result
+print(data_long)
+```
+
+```{r}
+
+# Identify unique course prefixes (assuming course codes are consistent in format)
+course_prefixes <- unique(gsub("([A-Z]+).*", "\\1", data_long$Course))
+
+# Print course prefixes for verification
+print(course_prefixes)
+
+# Loop through each course prefix and create a plot
+for(prefix in course_prefixes) {
+  # Filter data for the current prefix
+  current_data <- data_long %>% 
+    filter(grepl(paste0("^", prefix), Course)) %>%
+    arrange(Course, AcademicYear)
+  
+  # Generate the plot for the current subject area
+  p <- ggplot(current_data, aes(x = AcademicYear, y = Percent_Change, color = Course, group = Course)) +
+    geom_line() +
+    geom_point() +
+    theme_minimal() +
+    labs(title = paste("Percentage Change in Enrollment for", prefix, "Courses"),
+         x = "Academic Year", y = "Percentage Change", color = "Course") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Print the plot
+  print(p)
+}
+
+```
