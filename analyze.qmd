@@ -111,7 +111,7 @@ plot_subject_area <- function(data, metric, course_prefixes) {
       geom_line() +
       geom_point() +
       theme_minimal() +
-      labs(title = paste(metric, "in Enrollment for", prefix, "Courses"),
+      labs(title = paste(metric, "for", prefix, "Courses"),
            x = "Academic Year", y = metric, color = "Course") +
       theme(axis.text.x = element_text(angle = 45, hjust = 1))
     
@@ -161,7 +161,7 @@ for(prefix in course_prefixes) {
     geom_line(aes(color = prefix), size = 1) +  # Line for each prefix
     geom_point(aes(color = prefix), size = 3) +  # Dots for each data point
     geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black", size = 1) +  # Black, dashed trendline
-    scale_x_continuous(breaks = department_subset$AcademicYearNumeric, labels = department_subset$AcademicYear) +  # Adjust x-axis labels for readability
+    scale_x_continuous(breaks = department_subset$AcademicYearNumeric, labels = department_subset$AcademicYear) +  
     labs(title = paste("Total Enrollment Trend for", prefix),
          x = "Academic Year", y = "Total Enrollment",
          color = "Course", linetype = "Trendline") +  # Adjust legend title for linetype
